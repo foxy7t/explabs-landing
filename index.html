@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>explabs — experiential labs</title>
+<meta name="description" content="explabs. a terminal-first lab for building experiential ai." />
+<style>
+  :root{
+    --bg: #0a0c0a;
+    --bg-2: #0e120e;
+    --panel: #101510;
+    --panel-2: #131a13;
+    --line: #1d261d;
+    --line-2: #2a362a;
+    --green: #4af626;
+    --green-dim: #2f9e1d;
+    --green-faint: rgba(74,246,38,.08);
+    --purple: #8b78e6;
+    --text: #c8d3c8;
+    --muted: #6f7f6f;
+    --dim: #45503f;
+    --radius: 10px;
+    --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, "SF Mono", Menlo, monospace;
+    --ease: cubic-bezier(.22,.61,.36,1);
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+
+  html{ scroll-behavior:smooth; }
+
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  ::selection{ background: rgba(74,246,38,.25); color: #eaffea; }
+
+  /* ---------- subtle crt scanlines ---------- */
+  body::before{
+    content:"";
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,.12) 3px
+    );
+    pointer-events: none;
+    z-index: 9990;
+    opacity: .35;
+  }
+  /* faint vignette */
+  body::after{
+    content:"";
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(0,0,0,.45) 100%);
+    pointer-events: none;
+    z-index: 9989;
+  }
+
+  /* ---------- boot overlay ---------- */
+  #boot{
+    position: fixed; inset: 0;
+    background: var(--bg);
+    z-index: 10000;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 8vh 24px;
+    transition: opacity .5s var(--ease), visibility .5s;
+  }
+  #boot.hidden{ opacity: 0; visibility: hidden; }
+  #boot pre{
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--muted);
+    white-space: pre-wrap;
+    width: min(680px, 92vw);
+    min-height: 200px;
+  }
+  #boot .ok{ color: var(--green); }
+  #boot .skip{
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px; letter-spacing: .12em;
+    color: var(--dim);
+    text-transform: uppercase;
+    animation: pulse 2s infinite;
+  }
+
+  /* ---------- taskbar ---------- */
+  header{
+    position: sticky; top: 0;
+    z-index: 100;
+    display: flex; align-items: center; gap: 18px;
+    padding: 0 20px;
+    height: 46px;
+    background: rgba(10,12,10,.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .logo{
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 14px; letter-spacing: .04em;
+    color: var(--green);
+    text-decoration: none;
+  }
+  .logo .mark{
+    width: 20px; height: 20px;
+    border: 1.5px solid var(--green);
+    border-radius: 4px;
+    display: grid; place-items: center;
+    font-size: 11px; font-weight: 700;
+    box-shadow: 0 0 12px rgba(74,246,38,.25);
+  }
+  .menu{ display: flex; gap: 4px; margin-left: 12px; }
+  .menu button{
+    background: none; border: 1px solid transparent;
+    color: var(--muted);
+    font-family: inherit; font-size: 12.5px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color .2s var(--ease), border-color .2s var(--ease), background .2s var(--ease);
+  }
+  .menu button:hover{
+    color: var(--text);
+    border-color: var(--line-2);
+    background: var(--panel);
+  }
+  .spacer{ flex: 1; }
+  #clock{
+    font-size: 12px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .04em;
+  }
+  .status-dot{
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2.4s infinite;
+  }
+
+  @keyframes pulse{
+    0%,100%{ opacity: 1; }
+    50%{ opacity: .35; }
+  }
+
+  /* ---------- layout ---------- */
+  main{
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+  }
+
+  /* ---------- hero ---------- */
+  .hero{
+    display: grid;
+    grid-template-columns: 1.15fr .85fr;
+    gap: 32px;
+    align-items: stretch;
+  }
+  @media (max-width: 860px){
+    .hero{ grid-template-columns: 1fr; }
+  }
+
+  /* ---------- window chrome ---------- */
+  .window{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5);
+    transition: border-color .3s var(--ease), box-shadow .3s var(--ease);
+  }
+  .window:hover{
+    border-color: var(--line-2);
+    box-shadow: 0 12px 48px rgba(0,0,0,.6), 0 0 0 1px rgba(74,246,38,.06);
+  }
+  .titlebar{
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    user-select: none;
+  }
+  .dot{ width: 11px; height: 11px; border-radius: 50%; }
+  .dot.r{ background: #ff5f57; }
+  .dot.y{ background: #febc2e; }
+  .dot.g{ background: #28c840; }
+  .titlebar .title{
+    margin-left: 8px;
+    font-size: 12px; color: var(--muted);
+    letter-spacing: .03em;
+  }
+
+  /* ---------- terminal ---------- */
+  .terminal{
+    padding: 18px 18px 14px;
+    font-size: 13.5px;
+    line-height: 1.75;
+    flex: 1;
+    min-height: 300px;
+  }
+  .terminal .line{ white-space: pre-wrap; word-break: break-word; }
+  .terminal .prompt{ color: var(--green); }
+  .terminal .user{ color: var(--purple); }
+  .terminal .cmd{ color: var(--text); }
+  .terminal .out{ color: var(--muted); }
+  .terminal .ok{ color: var(--green); }
+  .terminal .dim{ color: var(--dim); }
+  .terminal .hl{ color: var(--green); }
+  .terminal .hl-p{ color: var(--purple); }
+
+  .cursor{
+    display: inline-block;
+    width: 8px; height: 16px;
+    background: var(--green);
+    vertical-align: text-bottom;
+    margin-left: 2px;
+    animation: blink 1.05s steps(1) infinite;
+  }
+  @keyframes blink{ 50%{ opacity: 0; } }
+
+  .term-input{
+    background: none; border: none; outline: none;
+    color: var(--text);
+    font: inherit;
+    width: 70%;
+    caret-color: var(--green);
+  }
+  .term-input::placeholder{ color: var(--dim); }
+
+  /* ---------- hero copy ---------- */
+  .copy{
+    display: flex; flex-direction: column; justify-content: center;
+    gap: 18px;
+    padding: 8px 4px;
+  }
+  .kicker{
+    font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--green);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .kicker::before{
+    content:""; width: 22px; height: 1px; background: var(--green);
+  }
+  h1{
+    font-size: clamp(30px, 4.6vw, 46px);
+    line-height: 1.12;
+    font-weight: 700;
+    color: #e8f2e8;
+    letter-spacing: -.01em;
+  }
+  h1 .accent{ color: var(--green); }
+  .sub{
+    color: var(--muted);
+    max-width: 46ch;
+    font-size: 14.5px;
+  }
+  .cta-row{ display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+  .btn{
+    font-family: inherit;
+    font-size: 13.5px;
+    letter-spacing: .02em;
+    padding: 11px 22px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform .2s var(--ease), box-shadow .25s var(--ease), background .25s var(--ease), border-color .25s var(--ease);
+  }
+  .btn:active{ transform: translateY(1px); }
+  .btn-primary{
+    background: var(--green);
+    color: #06130a;
+    border: 1px solid var(--green);
+    font-weight: 700;
+    box-shadow: 0 0 0 rgba(74,246,38,0);
+  }
+  .btn-primary:hover{
+    box-shadow: 0 4px 24px rgba(74,246,38,.35);
+    transform: translateY(-1px);
+  }
+  .btn-ghost{
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--line-2);
+  }
+  .btn-ghost:hover{
+    border-color: var(--green-dim);
+    color: var(--green);
+    background: var(--green-faint);
+    transform: translateY(-1px);
+  }
+
+  /* ---------- section headers ---------- */
+  section{ margin-top: 88px; }
+  .sec-head{ margin-bottom: 28px; }
+  .sec-head .path{
+    font-size: 12px; color: var(--dim);
+    letter-spacing: .06em;
+  }
+  .sec-head h2{
+    font-size: clamp(22px, 3vw, 30px);
+    color: #e8f2e8;
+    font-weight: 700;
+    margin-top: 6px;
+    letter-spacing: -.01em;
+  }
+  .sec-head h2 span{ color: var(--green); }
+
+  /* ---------- capability cards ---------- */
+  .grid{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 860px){ .grid{ grid-template-columns: 1fr; } }
+
+  .card{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    display: flex; flex-direction: column; gap: 12px;
+    transition: transform .3s var(--ease), border-color .3s var(--ease), box-shadow .3s var(--ease);
+  }
+  .card:hover{
+    transform: translateY(-4px);
+    border-color: var(--green-dim);
+    box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 0 0 1px rgba(74,246,38,.08);
+  }
+  .card .cmd-line{
+    font-size: 12.5px;
+    color: var(--green);
+    background: var(--green-faint);
+    border: 1px solid rgba(74,246,38,.15);
+    border-radius: 6px;
+    padding: 7px 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card .cmd-line::before{ content: "$"; color: var(--dim); }
+  .card h3{
+    font-size: 15px; color: #e2ece2; font-weight: 700;
+    letter-spacing: .01em;
+  }
+  .card p{ font-size: 13px; color: var(--muted); }
+  .card .tag{
+    margin-top: auto;
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--purple);
+  }
+
+  /* ---------- stats strip ---------- */
+  .stats{
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 860px){ .stats{ grid-template-columns: repeat(2, 1fr); } }
+  .stat{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+    text-align: center;
+  }
+  .stat .num{
+    font-size: 28px; font-weight: 700;
+    color: var(--green);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .lbl{
+    font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--dim);
+    margin-top: 4px;
+  }
+
+  /* ---------- footer ---------- */
+  footer{
+    border-top: 1px solid var(--line);
+    margin-top: 96px;
+    padding: 22px 24px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    font-size: 12px; color: var(--dim);
+    max-width: 1080px;
+    margin-left: auto; margin-right: auto;
+  }
+  footer .grow{ flex: 1; }
+  footer a{ color: var(--muted); text-decoration: none; transition: color .2s; }
+  footer a:hover{ color: var(--green); }
+
+  /* ---------- reveal on scroll ---------- */
+  .reveal{
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .6s var(--ease), transform .6s var(--ease);
+  }
+  .reveal.in{ opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{
+      animation-duration: .001s !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001s !important;
+    }
+    html{ scroll-behavior: auto; }
+    .reveal{ opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- boot sequence -->
+  <div id="boot" aria-hidden="true">
+    <pre id="boot-log"></pre>
+    <div class="skip">press any key to skip</div>
+  </div>
+
+  <!-- taskbar -->
+  <header>
+    <a class="logo" href="#top">
+      <span class="mark">x</span>
+      <span>explabs</span>
+    </a>
+    <nav class="menu" aria-label="main">
+      <button data-target="#capabilities">capabilities</button>
+      <button data-target="#metrics">metrics</button>
+      <button data-target="#access">access</button>
+    </nav>
+    <div class="spacer"></div>
+    <span id="clock">--:--:--</span>
+    <span class="status-dot" title="systems nominal"></span>
+  </header>
+
+  <main id="top">
+    <!-- hero -->
+    <div class="hero">
+      <div class="window reveal">
+        <div class="titlebar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="title">kali@explabs: ~/experiential-labs</span>
+        </div>
+        <div class="terminal" id="terminal">
+          <div id="term-out"></div>
+          <div class="line">
+            <span class="prompt"><span class="user">guest</span>@explabs:~$</span>
+            <span id="echo"></span><span class="cursor" id="cursor"></span>
+            <input class="term-input" id="term-input" placeholder="type 'help'…"
+                   autocomplete="off" spellcheck="false" aria-label="terminal input" />
+          </div>
+        </div>
+      </div>
+
+      <div class="copy">
+        <div class="kicker reveal">experiential labs</div>
+        <h1 class="reveal">Build ai experiences<br/>from the <span class="accent">terminal</span>.</h1>
+        <p class="sub reveal">
+          explabs is a Kali-styled workbench for shipping experiential AI.
+          Fast, local-first, and built for people who think in prompts,
+          pipelines, and pixels.
+        </p>
+        <div class="cta-row reveal">
+          <a class="btn btn-primary" href="#access">open the lab</a>
+          <a class="btn btn-ghost" href="#capabilities">view capabilities</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- capabilities -->
+    <section id="capabilities">
+      <div class="sec-head reveal">
+        <div class="path">~/capabilities</div>
+        <h2>what ships <span>in the box</span></h2>
+      </div>
+      <div class="grid">
+        <div class="card reveal">
+          <div class="cmd-line">agents --list</div>
+          <h3>Agent runtime</h3>
+          <p>Spin up tool-using agents with streaming output, sandboxed execution, and traceable steps. No black boxes.</p>
+          <div class="tag">runtime</div>
+        </div>
+        <div class="card reveal">
+          <div class="cmd-line">pipelines run</div>
+          <h3>Pipelines</h3>
+          <p>Compose models, retrieval, and evals into declarative flows. Re-run any stage. Diff any output.</p>
+          <div class="tag">orchestration</div>
+        </div>
+        <div class="card reveal">
+          <div class="cmd-line">playground --live</div>
+          <h3>Live playground</h3>
+          <p>Iterate on prompts and interfaces in real time with instant hot-reload and side-by-side model comparison.</p>
+          <div class="tag">experience</div>
+        </div>
+        <div class="card reveal">
+          <div class="cmd-line">evals score</div>
+          <h3>Eval harness</h3>
+          <p>Automated scoring with regression alerts. Know when a change made it better before users do.</p>
+          <div class="tag">quality</div>
+        </div>
+        <div class="card reveal">
+          <div class="cmd-line">vault keys</div>
+          <h3>Secrets vault</h3>
+          <p>Encrypted key storage with scoped access. Your credentials never touch the wire in the clear.</p>
+          <div class="tag">security</div>
+        </div>
+        <div class="card reveal">
+          <div class="cmd-line">export deploy</div>
+          <h3>One-shot deploy</h3>
+          <p>Package any experience into a self-contained bundle. Deploy to the lab cloud or self-host.</p>
+          <div class="tag">delivery</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- metrics -->
+    <section id="metrics">
+      <div class="sec-head reveal">
+        <div class="path">~/metrics</div>
+        <h2>by the <span>numbers</span></h2>
+      </div>
+      <div class="stats">
+        <div class="stat reveal"><div class="num" data-count="99.98" data-suffix="%">0</div><div class="lbl">uptime</div></div>
+        <div class="stat reveal"><div class="num" data-count="42" data-suffix="ms">0</div><div class="lbl">median ttfb</div></div>
+        <div class="stat reveal"><div class="num" data-count="128" data-suffix="+">0</div><div class="lbl">model presets</div></div>
+        <div class="stat reveal"><div class="num" data-count="9" data-suffix="">0</div><div class="lbl">edge regions</div></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- footer -->
+  <footer id="access">
+    <span class="status-dot"></span>
+    <span>systems nominal</span>
+    <span class="grow"></span>
+    <a href="#top">explabs v2.6</a>
+    <a href="#top">status</a>
+    <a href="#top">docs</a>
+  </footer>
+
+<script>
+(function(){
+  "use strict";
+
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------------- clock ---------------- */
+  var clock = document.getElementById("clock");
+  function tick(){
+    var d = new Date();
+    var p = function(n){ return String(n).padStart(2,"0"); };
+    clock.textContent = p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  /* ---------------- nav ---------------- */
+  document.querySelectorAll(".menu button").forEach(function(b){
+    b.addEventListener("click", function(){
+      var t = document.querySelector(b.dataset.target);
+      if (t) t.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
+    });
+  });
+
+  /* ---------------- boot sequence ---------------- */
+  var boot = document.getElementById("boot");
+  var bootLog = document.getElementById("boot-log");
+  var bootLines = [
+    "EXPLABS BIOS v2.6.0 — (c) 2026 experiential labs",
+    "checking memory ............ 65536k ok",
+    "loading kernel ............. [  ok  ]",
+    "mounting /experiential ..... [  ok  ]",
+    "starting agent runtime ..... [  ok  ]",
+    "starting eval service ...... [  ok  ]",
+    "calibrating ui ............. [  ok  ]",
+    "",
+    "boot complete. welcome, guest."
+  ];
+  var bootIdx = 0, bootDone = false;
+
+  function renderBootLine(i){
+    var t = bootLines[i];
+    if (t.indexOf("ok") !== -1 || t.indexOf("BIOS") === 0){
+      bootLog.innerHTML = bootLines.slice(0, i + 1).map(function(l){
+        if (l.indexOf("  ok  ") !== -1) return l.replace("[  ok  ]", '<span class="ok">[  ok  ]</span>');
+        return l;
+      }).join("\n");
+    } else {
+      bootLog.textContent = bootLines.slice(0, i + 1).join("\n");
+    }
+  }
+
+  function finishBoot(){
+    if (bootDone) return;
+    bootDone = true;
+    boot.classList.add("hidden");
+    setTimeout(function(){ boot.style.display = "none"; }, 600);
+    startTerminal();
+  }
+
+  if (reduceMotion){
+    bootLog.textContent = bootLines.join("\n");
+    finishBoot();
+  } else {
+    (function step(){
+      if (bootDone) return;
+      if (bootIdx < bootLines.length){
+        renderBootLine(bootIdx);
+        bootIdx++;
+        setTimeout(step, bootLines[bootIdx-1] === "" ? 120 : 190);
+      } else {
+        setTimeout(finishBoot, 500);
+      }
+    })();
+  }
+  document.addEventListener("keydown", function(){
+    if (!bootDone) finishBoot();
+  }, { once: true });
+  boot.addEventListener("click", finishBoot);
+
+  /* ---------------- terminal ---------------- */
+  var out = document.getElementById("term-out");
+  var echo = document.getElementById("echo");
+  var input = document.getElementById("term-input");
+  var cursor = document.getElementById("cursor");
+  var booted = false;
+
+  function addLine(html){
+    var d = document.createElement("div");
+    d.className = "line";
+    d.innerHTML = html;
+    out.appendChild(d);
+    return d;
+  }
+
+  var intro = [
+    { t: "whoami", type: true },
+    { t: "guest", out: true },
+    { t: "ls /experiential-labs", type: true },
+    { t: "agents/    pipelines/    playground/    evals/    vault/", out: true, dim: true },
+    { t: "./welcome --init", type: true },
+    { t: "[  ok  ] loading experiential core", out: true, ok: true },
+    { t: "[  ok  ] calibrating interface", out: true, ok: true },
+    { t: "[  ok  ] ready. type 'help' to get started.", out: true }
+  ];
+
+  function startTerminal(){
+    if (booted) return;
+    booted = true;
+    if (reduceMotion){
+      intro.forEach(function(l){
+        if (l.type) addLine('<span class="prompt"><span class="user">guest</span>@explabs:~$</span> <span class="cmd">' + l.t + "</span>");
+        else addLine('<span class="' + (l.ok ? "ok" : l.dim ? "dim" : "out") + '">' + l.t + "</span>");
+      });
+      return;
+    }
+    var i = 0;
+    (function next(){
+      if (i >= intro.length) return;
+      var l = intro[i++];
+      if (l.type){
+        var line = addLine('<span class="prompt"><span class="user">guest</span>@explabs:~$</span> <span class="cmd"></span>');
+        var cmdEl = line.querySelector(".cmd");
+        var j = 0;
+        (function typeChar(){
+          if (j < l.t.length){
+            cmdEl.textContent += l.t[j++];
+            setTimeout(typeChar, 26 + Math.random() * 40);
+          } else {
+            setTimeout(next, 320);
+          }
+        })();
+      } else {
+        setTimeout(function(){
+          addLine('<span class="' + (l.ok ? "ok" : l.dim ? "dim" : "out") + '">' + l.t + "</span>");
+          setTimeout(next, 140);
+        }, 220);
+      }
+    })();
+  }
+
+  /* ---------------- commands ---------------- */
+  var responses = {
+    help: [
+      "available commands:",
+      "  help      show this list",
+      "  whoami    identity check",
+      "  uname     system info",
+      "  about     what is explabs",
+      "  clear     clear the terminal",
+      "  sudo      (nice try)"
+    ],
+    whoami: ["guest"],
+    uname: [
+      "explabs 2.6.0 experiential-labs x86_64",
+      "kernel: ai/2026.09  environment: edge/9  status: nominal"
+    ],
+    about: [
+      "explabs — a terminal-first lab for building experiential ai.",
+      "agents, pipelines, playground, evals. local-first, fast, no fluff."
+    ],
+    sudo: ["guest is not in the sudoers file. this incident will be reported."],
+    clear: null
+  };
+
+  function respond(cmd){
+    var c = cmd.trim().toLowerCase();
+    if (c === "") return;
+    if (c === "clear"){ out.innerHTML = ""; return; }
+    var lines = responses[c];
+    if (!lines){
+      addLine('<span class="out">command not found: <span class="hl-p">' + escapeHtml(c) + "</span> — try 'help'</span>");
+      return;
+    }
+    lines.forEach(function(l, i){
+      setTimeout(function(){ addLine('<span class="out">' + l + "</span>"); }, reduceMotion ? 0 : i * 90);
+    });
+  }
+
+  function escapeHtml(s){
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  input.addEventListener("keydown", function(e){
+    if (e.key === "Enter"){
+      var v = input.value;
+      addLine('<span class="prompt"><span class="user">guest</span>@explabs:~$</span> <span class="cmd">' + escapeHtml(v) + "</span>");
+      input.value = "";
+      respond(v);
+    }
+  });
+
+  /* keep terminal scrolled */
+  document.getElementById("terminal").addEventListener("scroll", function(){});
+
+  /* ---------------- reveal on scroll ---------------- */
+  var reveals = document.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window && !reduceMotion){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if (en.isIntersecting){
+          en.target.classList.add("in");
+          io.unobserve(en.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    reveals.forEach(function(el){ io.observe(el); });
+  } else {
+    reveals.forEach(function(el){ el.classList.add("in"); });
+  }
+
+  /* ---------------- count-up stats ---------------- */
+  function countUp(el){
+    var target = parseFloat(el.dataset.count);
+    var suffix = el.dataset.suffix || "";
+    var decimals = (el.dataset.count.split(".")[1] || "").length;
+    if (reduceMotion){ el.textContent = target.toFixed(decimals) + suffix; return; }
+    var t0 = null, dur = 1100;
+    function frame(ts){
+      if (!t0) t0 = ts;
+      var p = Math.min((ts - t0) / dur, 1);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = (target * eased).toFixed(decimals) + suffix;
+      if (p < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+  var statEls = document.querySelectorAll(".num[data-count]");
+  if ("IntersectionObserver" in window){
+    var io2 = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if (en.isIntersecting){
+          countUp(en.target);
+          io2.unobserve(en.target);
+        }
+      });
+    }, { threshold: 0.4 });
+    statEls.forEach(function(el){ io2.observe(el); });
+  } else {
+    statEls.forEach(countUp);
+  }
+})();
+</script>
+</body>
+</html>
